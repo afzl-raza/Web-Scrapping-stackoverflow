@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stack Overflow Tag Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #f48024;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #555;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .control-label {
+            font-weight: 600;
+            color: #555;
+        }
+        select, button {
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            background-color: white;
+            cursor: pointer;
+        }
+        button {
+            background-color: #f48024;
+            color: white;
+            border: none;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #e06c0c;
+        }
+        button.active {
+            background-color: #e06c0c;
+            font-weight: bold;
+        }
+        .stats-container {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .stat-item {
+            margin-bottom: 8px;
+        }
+        .error-message {
+            color: #e84118;
+            font-weight: bold;
+        }
+        .network-container {
+            width: 100%;
+            height: 500px;
+            position: relative;
+        }
+        #tagNetwork {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+        }
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            margin-right: 5px;
+            border-radius: 3px;
+        }
+        .hidden {
+            display: none;
+        }
+        .chart-explanation {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .chart-explanation strong {
+        color: #f48024;
+        }
+        .error-container {
+        margin: 15px 0;
+        }
+
+        .error-message {
+            padding: 15px;
+            background: #fee;
+            border: 1px solid #f99;
+            border-radius: 4px;
+        }
+
+        .error-message h4 {
+            color: #d33;
+            margin-top: 0;
+        }
+
+        .error-message button {
+            background: #f48024;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+            .chart-error-container {
+        margin-top: 15px;
+        }
+
+        .chart-error {
+            padding: 15px;
+            background: #fee;
+            border: 1px solid #f99;
+            border-radius: 4px;
+        }
+
+        .chart-error h4 {
+            color: #d33;
+            margin: 0 0 10px 0;
+        }
+
+        .chart-error button {
+            background: #f48024;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Stack Overflow Tag Analysis Dashboard</h1>
+        
+        <div class="grid">
+            <!-- Tag Frequency Chart -->
+            <div class="chart-container">
+                <div class="chart-title">Top 30 Most Popular Tags</div>
+                <canvas id="tagFrequencyChart"></canvas>
+                <div class="loading" id="tagFrequencyLoading">Loading tag frequency data...</div>
+            </div>
+            
+            <!-- Tag Trends Chart -->
+            <div class="chart-container">
+                <div class="chart-title">Tag Popularity Over Time</div>
+                <div class="controls">
+                    <div class="control-group">
+                        <span class="control-label">Time Range:</span>
+                        <button id="btn-trend-1y">1 Year</button>
+                        <button id="btn-trend-2y" class="active">2 Years</button>
+                        <button id="btn-trend-5y">5 Years</button>
+                    </div>
+                </div>
+                <canvas id="tagTrendChart"></canvas>
+                <div class="legend" id="tagTrendLegend"></div>
+                <div class="loading" id="tagTrendLoading">Loading tag trends data...</div>
+            </div>
+            
+            <!-- Hourly Activity Chart -->
+            <div class="chart-container">
+                <div class="chart-title">Hourly Activity Pattern</div>
+                <canvas id="hourlyActivityChart"></canvas>
+                <div class="loading" id="hourlyActivityLoading">Loading hourly activity data...</div>
+            </div>
+            
+            <!-- Daily Activity Chart -->
+            <div class="chart-container">
+                <div class="chart-title">Daily Activity Pattern</div>
+                <canvas id="dailyActivityChart"></canvas>
+                <div class="loading" id="dailyActivityLoading">Loading daily activity data...</div>
+            </div>
+            
+            <!-- Time Trend Chart -->
+            <div class="chart-container">
+                <div class="chart-title">Question Volume Over Time</div>
+                <canvas id="timeTrendChart"></canvas>
+                <div class="loading" id="timeTrendLoading">Loading time trend data...</div>
+            </div>
+            
+            <!-- Tag Co-occurrence Network -->
+            <div class="chart-container">
+                <div class="chart-title">Tag Relationships (Top 50 Co-occurrences)</div>
+                <div class="network-container">
+                    <div id="tagNetwork"></div>
+                </div>
+                <div class="loading" id="networkLoading">Loading tag network visualization...</div>
+                <div class="stats-container">
+                    <div class="stat-item">Node size represents tag frequency</div>
+                    <div class="stat-item">Edge thickness represents co-occurrence frequency</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost:5001/api';
+        const COLORS = [
+            '#f48024', '#9fa6ad', '#5eba7d', '#487eb0', '#e84118',
+            '#8c7ae6', '#fbc531', '#00a8ff', '#4cd137', '#8c7ae6',
+            '#ff7979', '#badc58', '#7ed6df', '#e056fd', '#686de0'
+        ];
+        
+        // Chart instances
+        const charts = {
+            tagFrequency: null,
+            tagTrend: null,
+            hourlyActivity: null,
+            dailyActivity: null,
+            timeTrend: null,
+            network: null
+        };
+
+        // Initialize when DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load all charts
+            Promise.all([
+                safeLoadChart(loadTagFrequency),
+                safeLoadChart(loadTagTrend),
+                safeLoadChart(loadHourlyActivity),
+                safeLoadChart(loadDailyActivity),
+                safeLoadChart(loadTimeTrend),
+                safeLoadChart(loadTagNetwork)
+            ])
+            .then(() => {
+                setupTagTrendControls();
+            })
+            .catch(error => {
+                console.error('Initialization error:', error);
+            });
+        });
+
+        // Helper Functions /////////////////////////////////////////////////////
+
+        async function safeLoadChart(loaderFunc) {
+            try {
+                await loaderFunc();
+            } catch (error) {
+                console.error('Error in chart loader:', error);
+                throw error;
+            }
+        }
+
+        function setupTagTrendControls() {
+            try {
+                const buttons = document.querySelectorAll('#tagTrendChart ~ .controls button');
+                buttons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        buttons.forEach(btn => btn.classList.remove('active'));
+                        this.classList.add('active');
+                        safeLoadChart(loadTagTrend);
+                    });
+                });
+            } catch (error) {
+                console.error('Error setting up tag trend controls:', error);
+            }
+        }
+
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/${endpoint}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                if (!data || !data.success || (Array.isArray(data.data) && data.data.length === 0)) {
+                    throw new Error('No valid data received from server');
+                }
+                
+                return data.data;
+            } catch (error) {
+                console.error(`Error fetching ${endpoint}:`, error);
+                throw error;
+            }
+        }
+
+        function handleChartError(error, loadingElement, chartCanvas, chartName) {
+            console.error(`Error loading ${chartName}:`, error);
+            
+            if (loadingElement) {
+                loadingElement.innerHTML = `<span class="error-message">Error loading ${chartName}: ${error.message}</span>`;
+                loadingElement.style.display = 'block';
+            }
+            
+            if (chartCanvas) {
+                if (chartCanvas.style) {
+                    chartCanvas.style.display = 'none';
+                } else if (chartCanvas.canvas) {
+                    chartCanvas.canvas.style.display = 'none';
+                }
+            }
+            
+            // Destroy chart instance if it exists
+            if (charts[chartName]) {
+                if (chartName === 'network' && charts.network.destroy) {
+                    charts.network.destroy();
+                } else if (charts[chartName].destroy) {
+                    charts[chartName].destroy();
+                }
+                charts[chartName] = null;
+            }
+        }
+
+        // Chart Loading Functions //////////////////////////////////////////////
+
+        async function loadTagFrequency() {
+            const loadingElement = document.getElementById('tagFrequencyLoading');
+            const chartCanvas = document.getElementById('tagFrequencyChart');
+            
+            try {
+                loadingElement.style.display = 'block';
+                chartCanvas.style.display = 'none';
+                
+                const data = await fetchData('tag_frequency');
+                
+                if (charts.tagFrequency) {
+                    charts.tagFrequency.destroy();
+                }
+                
+                // Sort by count descending
+                data.sort((a, b) => b.count - a.count);
+                
+                charts.tagFrequency = new Chart(chartCanvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.slice(0, 30).map(item => item.tag),
+                        datasets: [{
+                            label: 'Number of Posts',
+                            data: data.slice(0, 30).map(item => item.count),
+                            backgroundColor: COLORS,
+                            borderColor: COLORS.map(c => c.replace('0.6', '1')),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        indexAxis: 'y', // Horizontal bars
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: context => `${context.parsed.x} posts`
+                                }
+                            },
+                            datalabels: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Number of Posts' }
+                            },
+                            y: {
+                                ticks: {
+                                    autoSkip: false
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                loadingElement.style.display = 'none';
+                chartCanvas.style.display = 'block';
+            } catch (error) {
+                handleChartError(error, loadingElement, chartCanvas, 'tagFrequency');
+            }
+        }
+
+        async function loadTagTrend() {
+    const loadingElement = document.getElementById('tagTrendLoading');
+    const chartCanvas = document.getElementById('tagTrendChart');
+    const legendElement = document.getElementById('tagTrendLegend');
+    
+    try {
+        loadingElement.style.display = 'block';
+        chartCanvas.style.display = 'none';
+        legendElement.innerHTML = '';
+        
+        const data = await fetchData('tag_trends');
+        
+        if (charts.tagTrend) {
+            charts.tagTrend.destroy();
+        }
+
+        // Group data by tag
+        const tagData = {};
+        data.forEach(item => {
+            if (!tagData[item.Tags]) {
+                tagData[item.Tags] = [];
+            }
+            tagData[item.Tags].push(item);
+        });
+
+        // Sort each tag's data by date
+        const sortedData = {};
+        Object.keys(tagData).forEach(tag => {
+            sortedData[tag] = tagData[tag].sort((a, b) => {
+                return new Date(a.MonthYear) - new Date(b.MonthYear);
+            });
+        });
+
+        // Prepare datasets
+        const labels = [...new Set(data.map(item => item.MonthYear))].sort();
+        const datasets = [];
+        const colors = ['#f48024', '#5eba7d', '#487eb0', '#e84118', '#8c7ae6'];
+        
+        Object.keys(sortedData).forEach((tag, index) => {
+            datasets.push({
+                label: tag,
+                data: sortedData[tag].map(item => item.percentage),
+                borderColor: colors[index % colors.length],
+                backgroundColor: colors[index % colors.length] + '33',
+                tension: 0.3,
+                fill: false
+            });
+        });
+
+        // Create legend
+        legendElement.innerHTML = Object.keys(sortedData).map((tag, index) => `
+            <div class="legend-item">
+                <span class="legend-color" style="background-color: ${colors[index % colors.length]}"></span>
+                ${tag}
+            </div>
+        `).join('');
+
+        charts.tagTrend = new Chart(chartCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}% of questions`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Percentage of Total Questions'
+                        },
+                        ticks: {
+                            callback: (value) => `${value}%`
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Month'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                }
+            }
+        });
+
+        loadingElement.style.display = 'none';
+        chartCanvas.style.display = 'block';
+    } catch (error) {
+        handleChartError(error, loadingElement, chartCanvas, 'tagTrend');
+    }
+}
+
+        async function loadHourlyActivity() {
+            const loadingElement = document.getElementById('hourlyActivityLoading');
+            const chartCanvas = document.getElementById('hourlyActivityChart');
+            
+            try {
+                loadingElement.style.display = 'block';
+                chartCanvas.style.display = 'none';
+                
+                const data = await fetchData('hourly_activity');
+                
+                if (charts.hourlyActivity) {
+                    charts.hourlyActivity.destroy();
+                }
+                
+                charts.hourlyActivity = new Chart(chartCanvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: data.map(item => `${item.Hour}:00`),
+                        datasets: [{
+                            label: 'Posts per Hour',
+                            data: data.map(item => item.count),
+                            backgroundColor: 'rgba(244, 128, 36, 0.2)',
+                            borderColor: '#f48024',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: context => `${context.parsed.y} posts at ${context.label}`
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Number of Posts' }
+                            },
+                            x: {
+                                title: { display: true, text: 'Hour of Day' }
+                            }
+                        }
+                    }
+                });
+                
+                loadingElement.style.display = 'none';
+                chartCanvas.style.display = 'block';
+            } catch (error) {
+                handleChartError(error, loadingElement, chartCanvas, 'hourlyActivity');
+            }
+        }
+
+        async function loadDailyActivity() {
+    const loadingElement = document.getElementById('dailyActivityLoading');
+    const chartCanvas = document.getElementById('dailyActivityChart');
+    const errorContainer = document.getElementById('dailyActivityError') || createErrorContainer(chartCanvas);
+    
+    try {
+        loadingElement.style.display = 'block';
+        chartCanvas.style.display = 'none';
+        errorContainer.innerHTML = '';
+        
+        const response = await fetch(`${API_BASE_URL}/daily_activity`);
+        
+        // Check for HTTP errors
+        if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Validate response structure
+        if (!data.success || !Array.isArray(data.data)) {
+            throw new Error('Invalid data format from server');
+        }
+
+        // Clear previous chart if exists
+        if (charts.dailyActivity) {
+            charts.dailyActivity.destroy();
+        }
+
+        // Sort data by day number (0-6)
+        const sortedData = [...data.data].sort((a, b) => a.DayOfWeek - b.DayOfWeek);
+        
+        // Create chart
+        charts.dailyActivity = new Chart(chartCanvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: sortedData.map(item => item.DayName),
+                datasets: [{
+                    label: 'Questions per day',
+                    data: sortedData.map(item => item.count),
+                    backgroundColor: [
+                        '#f48024', '#5eba7d', '#487eb0', 
+                        '#e84118', '#8c7ae6', '#fbc531', 
+                        '#00a8ff'
+                    ],
+                    borderColor: '#fff',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                return `${context.parsed.y} questions on ${context.label}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Questions'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Day of Week'
+                        }
+                    }
+                }
+            }
+        });
+
+        loadingElement.style.display = 'none';
+        chartCanvas.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error loading daily activity:', error);
+        loadingElement.style.display = 'none';
+        errorContainer.innerHTML = `
+            <div class="chart-error">
+                <h4>Failed to load daily activity data</h4>
+                <p>${error.message}</p>
+                <button onclick="loadDailyActivity()">Retry</button>
+            </div>
+        `;
+    }
+}
+
+function createErrorContainer(chartElement) {
+    const container = document.createElement('div');
+    container.id = 'dailyActivityError';
+    container.className = 'chart-error-container';
+    chartElement.parentNode.insertBefore(container, chartElement.nextSibling);
+    return container;
+}
+
+        async function loadTimeTrend() {
+    const loadingElement = document.getElementById('timeTrendLoading');
+    const chartCanvas = document.getElementById('timeTrendChart');
+    const errorContainer = document.createElement('div');
+    errorContainer.className = 'error-container';
+    chartCanvas.parentNode.insertBefore(errorContainer, chartCanvas.nextSibling);
+
+    try {
+        loadingElement.style.display = 'block';
+        chartCanvas.style.display = 'none';
+        errorContainer.innerHTML = '';
+        
+        const response = await fetch(`${API_BASE_URL}/time_trend`);
+        
+        // Check for HTTP errors
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Server error: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Check for application errors
+        if (!data.success) {
+            throw new Error(data.error || 'Invalid data format');
+        }
+
+        // Clear previous chart if exists
+        if (charts.timeTrend) {
+            charts.timeTrend.destroy();
+        }
+
+        // Process data
+        const labels = data.data.map(item => item.Date);
+        const counts = data.data.map(item => item.count);
+        const smoothed = data.data.map(item => item.smoothed);
+
+        // Create chart
+        charts.timeTrend = new Chart(chartCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Question Volume (Smoothed)',
+                    data: smoothed,
+                    borderColor: '#f48024',
+                    backgroundColor: 'rgba(244, 128, 36, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true
+                }, {
+                    label: 'Raw Count',
+                    data: counts,
+                    borderColor: 'rgba(150, 150, 150, 0.3)',
+                    backgroundColor: 'rgba(150, 150, 150, 0.1)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    hidden: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        onClick: (e, legendItem, legend) => {
+                            const ci = legend.chart;
+                            ci.data.datasets.forEach((ds, i) => {
+                                const meta = ci.getDatasetMeta(i);
+                                meta.hidden = meta.hidden === null ? !ci.data.datasets[i].hidden : null;
+                            });
+                            ci.update();
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                return `${context.dataset.label}: ${context.parsed.y.toFixed(context.datasetIndex === 0 ? 1 : 0)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            callback: function(val, index) {
+                                return index % 3 === 0 ? this.getLabelForValue(val) : '';
+                            }
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        min: 0
+                    }
+                }
+            }
+        });
+
+        loadingElement.style.display = 'none';
+        chartCanvas.style.display = 'block';
+
+    } catch (error) {
+        console.error('Error loading time trend:', error);
+        loadingElement.style.display = 'none';
+        errorContainer.innerHTML = `
+            <div class="error-message">
+                <h4>Failed to load time trend</h4>
+                <p>${error.message}</p>
+                <button onclick="loadTimeTrend()">Retry</button>
+            </div>
+        `;
+    }
+}
+
+
+
+
+        async function loadTagNetwork() {
+    const loadingElement = document.getElementById('networkLoading');
+    const networkContainer = document.getElementById('tagNetwork');
+    
+    try {
+        loadingElement.style.display = 'block';
+        networkContainer.innerHTML = '';
+        
+        const response = await fetch(`${API_BASE_URL}/tag_network`);
+        
+        // First check if response is OK
+        if (!response.ok) {
+            throw new Error(`Network error: ${response.status}`);
+        }
+        
+        // Check content type is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Invalid response format');
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success || !data.nodes || !data.edges) {
+            throw new Error('Invalid network data structure');
+        }
+
+        // Create the network visualization
+        const nodes = new vis.DataSet(data.nodes.map(node => ({
+            id: node.id,
+            label: node.label,
+            value: node.value,
+            font: { size: 12 },
+            color: COLORS[node.id.length % COLORS.length]
+        })));
+
+        const edges = new vis.DataSet(data.edges.map(edge => ({
+            from: edge.from,
+            to: edge.to,
+            value: edge.value,
+            width: Math.min(5, Math.max(1, edge.value / 10)),
+            color: { opacity: 0.6 }
+        })));
+
+        charts.network = new vis.Network(networkContainer, { nodes, edges }, {
+            nodes: {
+                shape: 'dot',
+                scaling: {
+                    min: 10,
+                    max: 30
+                }
+            },
+            edges: {
+                smooth: true
+            },
+            physics: {
+                stabilization: {
+                    enabled: true,
+                    iterations: 1000
+                }
+            }
+        });
+
+        loadingElement.style.display = 'none';
+        
+    } catch (error) {
+        console.error('Network error:', error);
+        networkContainer.innerHTML = `
+            <div class="error-message">
+                Network visualization failed to load: ${error.message}
+                <br><br>
+                <button onclick="loadTagNetwork()">Retry</button>
+            </div>
+        `;
+        loadingElement.style.display = 'none';
+    }
+}
+    </script>
+</body>
+</html>
